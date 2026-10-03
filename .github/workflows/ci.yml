@@ -1,0 +1,153 @@
+name: PharmaStock CI
+
+on:
+  push:
+  pull_request:
+
+# GITHUB_TOKEN is read-only by default; no job needs write access.
+permissions:
+  contents: read
+
+env:
+  # One Node version is pinned and shared by every job so the backend, the
+  # frontend build and the browser run cannot drift apart.
+  NODE_VERSION: "24.19.0"
+  # The backend job uses a CI-only database. The browser suite additionally
+  # refuses to run against anything whose name does not look disposable
+  # (must contain "e2e" or "test"), so the E2E job gets its own database.
+  CI_MONGODB_URI: mongodb://127.0.0.1:27017/pharmastock_ci?replicaSet=rs0
+  CI_E2E_MONGODB_URI: mongodb://127.0.0.1:27017/pharmastock_e2e?replicaSet=rs0
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Project/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Project/backend/package-lock.json
+      - run: npm ci
+      - name: Generate disposable CI credentials
+        # Per-run random values, masked so they never appear in the log. The
+        # secret is exported through GITHUB_ENV for later steps only; it is
+        # never written to a repository file.
+        run: |
+          JWT_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
+          SEED_PASSWORD=$(node -e "process.stdout.write(require('crypto').randomBytes(18).toString('base64url'))")
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$SEED_PASSWORD"
+          echo "CI_JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          echo "CI_SEED_PASSWORD=$SEED_PASSWORD" >> "$GITHUB_ENV"
+      - name: Start MongoDB replica set
+        run: |
+          docker run --name pharmastock-mongo -d -p 27017:27017 mongo:7.0 mongod --replSet rs0 --bind_ip_all
+          until docker exec pharmastock-mongo mongosh --quiet --eval "db.adminCommand({ ping: 1 }).ok" | grep 1; do sleep 2; done
+          docker exec pharmastock-mongo mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'127.0.0.1:27017'}]})"
+          until [ "$(docker exec pharmastock-mongo mongosh --quiet --eval 'db.hello().isWritablePrimary')" = "true" ]; do sleep 2; done
+      - name: Seed CI database
+        env:
+          MONGODB_URI: ${{ env.CI_MONGODB_URI }}
+          JWT_SECRET: ${{ env.CI_JWT_SECRET }}
+          SEED_CONFIRM: RESET
+          SEED_PASSWORD: ${{ env.CI_SEED_PASSWORD }}
+        run: npm run seed -- --force
+      - name: Verify CI database
+        env:
+          MONGODB_URI: ${{ env.CI_MONGODB_URI }}
+          JWT_SECRET: ${{ env.CI_JWT_SECRET }}
+        run: npm run verify-db
+      - name: Run backend tests
+        env:
+          MONGODB_URI: ${{ env.CI_MONGODB_URI }}
+          JWT_SECRET: ${{ env.CI_JWT_SECRET }}
+          SEED_PASSWORD: ${{ env.CI_SEED_PASSWORD }}
+          RUN_TRANSACTION_TESTS: "true"
+        run: npm test
+      - run: npm audit --audit-level=high
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Project/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Project/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm audit --audit-level=high
+
+  e2e:
+    # The browser suite needs the API, the dev server and a seeded database, and
+    # it is the only job that proves the two halves are actually wired together.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Project/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Project/frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - name: Install backend dependencies
+        working-directory: Project/backend
+        run: npm ci
+      - name: Generate disposable CI credentials
+        run: |
+          JWT_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
+          SEED_PASSWORD=$(node -e "process.stdout.write(require('crypto').randomBytes(18).toString('base64url'))")
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$SEED_PASSWORD"
+          echo "CI_JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          echo "CI_SEED_PASSWORD=$SEED_PASSWORD" >> "$GITHUB_ENV"
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('Project/frontend/package-lock.json') }}
+      - name: Install Playwright Chromium
+        working-directory: Project/frontend
+        run: npx --no-install playwright-core install --with-deps chromium
+      - name: Start MongoDB replica set
+        run: |
+          docker run --name pharmastock-mongo -d -p 27017:27017 mongo:7.0 mongod --replSet rs0 --bind_ip_all
+          until docker exec pharmastock-mongo mongosh --quiet --eval "db.adminCommand({ ping: 1 }).ok" | grep 1; do sleep 2; done
+          docker exec pharmastock-mongo mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'127.0.0.1:27017'}]})"
+          until [ "$(docker exec pharmastock-mongo mongosh --quiet --eval 'db.hello().isWritablePrimary')" = "true" ]; do sleep 2; done
+      - name: Seed E2E database
+        working-directory: Project/backend
+        env:
+          MONGODB_URI: ${{ env.CI_E2E_MONGODB_URI }}
+          JWT_SECRET: ${{ env.CI_JWT_SECRET }}
+          SEED_CONFIRM: RESET
+          SEED_PASSWORD: ${{ env.CI_SEED_PASSWORD }}
+        run: npm run seed -- --force
+      - name: Run browser E2E suite
+        env:
+          E2E_MONGODB_URI: ${{ env.CI_E2E_MONGODB_URI }}
+          E2E_PASSWORD: ${{ env.CI_SEED_PASSWORD }}
+          E2E_JWT_SECRET: ${{ env.CI_JWT_SECRET }}
+          E2E_CHROME_PATH: ""
+        run: npm run test:e2e
+      - name: Upload E2E evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-log
+          path: Project/frontend/test-results/
+          if-no-files-found: ignore

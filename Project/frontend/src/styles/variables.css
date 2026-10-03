@@ -1,0 +1,78 @@
+:root {
+  /* Brand */
+  --accent: #14b8a6;
+  --accent-strong: #0d9488;
+  --accent-soft: rgba(20, 184, 166, 0.12);
+  --accent-glow: rgba(20, 184, 166, 0.35);
+  --cyan: #22d3ee;
+  --cyan-soft: rgba(34, 211, 238, 0.14);
+
+  /* Surfaces */
+  --bg-primary: #070b18;
+  --bg-secondary: #0b1226;
+  --bg-tertiary: #0f1b38;
+  --surface: #0e1830;
+  --surface-alt: #111d3d;
+  --surface-hover: #16254d;
+  --border: rgba(148, 163, 184, 0.14);
+  --border-strong: rgba(148, 163, 184, 0.24);
+
+  /* Text */
+  --text-primary: #e6edf7;
+  --text-secondary: #9fb0c9;
+  --text-muted: #6b7a94;
+  --text-invert: #061022;
+
+  /* Semantic */
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.14);
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Manrope", "Inter", system-ui, sans-serif;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 999px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --shadow-accent: 0 8px 26px rgba(13, 148, 136, 0.3);
+
+  /* Layout */
+  --sidebar-w: 260px;
+  --topbar-h: 68px;
+  --content-max: 1560px;
+}
+
+/* Light theme */
+html[data-theme="light"] {
+  --bg-primary: #f3f6fb;
+  --bg-secondary: #eef2f9;
+  --bg-tertiary: #e4eaf6;
+  --surface: #ffffff;
+  --surface-alt: #f7f9fd;
+  --surface-hover: #eef3fb;
+  --border: rgba(30, 41, 59, 0.1);
+  --border-strong: rgba(30, 41, 59, 0.2);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-invert: #f8fafc;
+
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 8px 22px rgba(15, 23, 42, 0.1);
+  --shadow-lg: 0 18px 44px rgba(15, 23, 42, 0.14);
+}
